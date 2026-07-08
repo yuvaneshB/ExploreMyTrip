@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 const WishlistContext = createContext(null);
 
 export const WishlistProvider = ({ children }) => {
-  const { user } = useAuth();
+  const { user, loading: authLoading } = useAuth();
   const [wishlist, setWishlist] = useState([]);
   const [loading, setLoading] = useState(false);
 
@@ -82,15 +82,17 @@ export const WishlistProvider = ({ children }) => {
     fetchWishlist();
   }, [user, fetchWishlist]);
 
-  // Fetch or sync whenever user authentication state changes
+  // Fetch or sync whenever user authentication state changes and auth initialization completes
   useEffect(() => {
+    if (authLoading) return; // Wait until AuthContext finishes validating session
+
     fetchWishlist();
     if (user) {
       syncWithBackend();
     } else {
       setWishlist([]); // clear wishlist state immediately on logout
     }
-  }, [user, fetchWishlist, syncWithBackend]);
+  }, [user, authLoading, fetchWishlist, syncWithBackend]);
 
   const toggleWishlist = async (tour) => {
     if (!tour) return false;

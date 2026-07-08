@@ -21,13 +21,22 @@ const PublicTicketPage = () => {
       setLoading(true);
       setError(null);
       try {
-        // Resolve API base URL dynamically
-        const { protocol, hostname } = window.location;
-        let apiBaseURL = 'https://exploremytrip.onrender.com/api/v1';
-        if (hostname && (hostname === 'localhost' || /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(hostname))) {
-          const cleanProtocol = protocol && protocol.includes(':') ? protocol : 'http:';
-          apiBaseURL = `${cleanProtocol}//${hostname}:4000/api/v1`;
-        }
+        const getApiUrl = () => {
+          const envUrl = import.meta.env.VITE_API_URL;
+          if (envUrl && envUrl !== 'undefined' && envUrl !== 'null' && envUrl.trim() !== '') {
+            const cleanUrl = envUrl.replace(/\/$/, '');
+            if (cleanUrl.endsWith('/api/v1')) return cleanUrl;
+            if (cleanUrl.endsWith('/api')) return `${cleanUrl}/v1`;
+            return `${cleanUrl}/api/v1`;
+          }
+          const { protocol, hostname } = window.location;
+          if (hostname && (hostname === 'localhost' || /^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$/.test(hostname))) {
+            const cleanProtocol = protocol && protocol.includes(':') ? protocol : 'http:';
+            return `${cleanProtocol}//${hostname}:4000/api/v1`;
+          }
+          return 'https://exploremytrip.onrender.com/api/v1';
+        };
+        const apiBaseURL = getApiUrl();
 
         const res = await axios.get(`${apiBaseURL}/bookings/verify/${bookingId}?token=${token}`);
         if (res.data.success && res.data.verified) {

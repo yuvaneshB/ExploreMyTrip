@@ -13,10 +13,22 @@ const getDefaultApiUrl = () => {
   return 'https://exploremytrip.onrender.com/api/v1';
 };
 
-const rawBaseUrl = import.meta.env.VITE_API_BASE_URL;
-const apiBaseURL = (!rawBaseUrl || rawBaseUrl === 'undefined' || rawBaseUrl === 'null' || rawBaseUrl.trim() === '')
-  ? getDefaultApiUrl()
-  : rawBaseUrl;
+const getApiBaseUrl = () => {
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl && envUrl !== 'undefined' && envUrl !== 'null' && envUrl.trim() !== '') {
+    const cleanUrl = envUrl.replace(/\/$/, '');
+    if (cleanUrl.endsWith('/api/v1')) {
+      return cleanUrl;
+    }
+    if (cleanUrl.endsWith('/api')) {
+      return `${cleanUrl}/v1`;
+    }
+    return `${cleanUrl}/api/v1`;
+  }
+  return getDefaultApiUrl();
+};
+
+const apiBaseURL = getApiBaseUrl();
 
 const api = axios.create({
   baseURL: apiBaseURL,

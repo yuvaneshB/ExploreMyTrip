@@ -1,9 +1,16 @@
 import axios from 'axios';
 
 const getBaseApiUrl = () => {
-  const rawBaseUrl = import.meta.env.VITE_API_BASE_URL;
-  if (rawBaseUrl && rawBaseUrl !== 'undefined' && rawBaseUrl !== 'null' && rawBaseUrl.trim() !== '') {
-    return rawBaseUrl.replace(/\/v1\/?$/, '');
+  const envUrl = import.meta.env.VITE_API_URL;
+  if (envUrl && envUrl !== 'undefined' && envUrl !== 'null' && envUrl.trim() !== '') {
+    const cleanUrl = envUrl.replace(/\/$/, '');
+    if (cleanUrl.endsWith('/api/v1')) {
+      return cleanUrl.replace(/\/v1$/, '');
+    }
+    if (cleanUrl.endsWith('/api')) {
+      return cleanUrl;
+    }
+    return `${cleanUrl}/api`;
   }
   try {
     const { protocol, hostname } = window.location;

@@ -44,7 +44,9 @@ export const WishlistProvider = ({ children }) => {
         setWishlist(tours);
       }
     } catch (err) {
-      console.warn('Backend wishlist fetch failed. Falling back to local storage.');
+      if (err.response?.status !== 401) {
+        console.warn('Backend wishlist fetch failed. Falling back to local storage.');
+      }
       setWishlist(getLocalWishlist());
     } finally {
       setLoading(false);

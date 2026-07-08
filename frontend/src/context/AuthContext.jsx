@@ -22,7 +22,9 @@ export const AuthProvider = ({ children }) => {
             localStorage.setItem('user', JSON.stringify(res.data.user));
           }
         } catch (error) {
-          console.error('Failed to sync profile on mount:', error.message);
+          if (error.response?.status !== 401) {
+            console.error('Failed to sync profile on mount:', error.message);
+          }
         }
       }
       setLoading(false);

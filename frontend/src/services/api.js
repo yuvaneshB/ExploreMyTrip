@@ -58,8 +58,8 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    // If unauthorized and we haven't retried yet
-    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url.includes('/auth/refresh')) {
+    // If unauthorized and we haven't retried yet, but skip for all auth/ endpoints
+    if (error.response?.status === 401 && !originalRequest._retry && !originalRequest.url.includes('/auth/')) {
       originalRequest._retry = true;
 
       if (isRefreshing) {

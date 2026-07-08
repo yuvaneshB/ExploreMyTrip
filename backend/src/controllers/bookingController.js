@@ -170,7 +170,7 @@ export const createBookingHold = async (req, res, next) => {
     await tour.save();
 
     // Create booking record with Hold status
-    const holdExpiresAt = new Date(Date.now() + 30 * 60 * 1000); // 30 mins lock
+    const holdExpiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 mins lock
 
     const booking = await Booking.create({
       user: req.user._id,

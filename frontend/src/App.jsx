@@ -21,8 +21,8 @@ import DiscoverPage from './pages/DiscoverPage.jsx';
 import DestinationDetailPage from './pages/DestinationDetailPage.jsx';
 import MyBookingsPage from './pages/MyBookingsPage.jsx';
 import BookingDetailsPage from './pages/BookingDetailsPage.jsx';
-import TicketVerificationPage from './pages/TicketVerificationPage.jsx';
-import PublicTicketPage from './pages/PublicTicketPage.jsx';
+import DocumentDownloadPage from './pages/DocumentDownloadPage.jsx';
+
 
 
 // Auth Pages
@@ -168,8 +168,8 @@ function MainApp() {
 
         {/* Standalone Layout Wrapped Routes */}
         <Route element={<StandaloneLayout />}>
-          <Route path="/ticket/verify/:token" element={<TicketVerificationPage />} />
-          <Route path="/ticket/:bookingId" element={<PublicTicketPage />} />
+          <Route path="/documents/:secureToken" element={<DocumentDownloadPage />} />
+
 
           
           <Route path="/register" element={<RegisterPage />} />

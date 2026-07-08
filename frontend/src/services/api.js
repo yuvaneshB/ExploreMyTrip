@@ -135,4 +135,8 @@ api.interceptors.response.use(
   }
 );
 
+export const getBackendUrl = () => {
+  return apiBaseURL.replace(/\/api\/v1$/, '');
+};
+
 export default api;

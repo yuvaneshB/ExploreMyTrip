@@ -161,7 +161,7 @@ export const generateOtpEmailHtml = ({ userName, otp, purpose, expiryMinutes }) 
   `;
 };
 
-export const generateBookingEmailHtml = ({ userName, booking, tour }) => {
+export const generateBookingEmailHtml = ({ userName, booking, tour, frontendOrigin, eticketToken, itineraryToken }) => {
   const greeting = userName ? `Hello ${userName},` : 'Hello,';
   const travelDateFormatted = new Date(booking.departureDate).toLocaleDateString('en-US', {
     year: 'numeric',
@@ -212,10 +212,20 @@ export const generateBookingEmailHtml = ({ userName, booking, tour }) => {
         </table>
       </div>
 
-      <div style="text-align: center; margin: 32px 0;">
-        <h3 style="color: #0f172a; font-size: 16px; font-weight: 800; margin: 0 0 12px 0;">Verify Your Booking</h3>
-        <img src="cid:ticket-qr" alt="Check-in Ticket QR Code" style="width: 200px; height: 200px; display: block; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; padding: 8px; background-color: #ffffff;" />
-        <p style="color: #64748b; font-size: 12px; margin-top: 8px; font-weight: 500;">Scan this QR code to verify your ticket.</p>
+      <div style="margin: 32px 0; font-size: 14px; color: #334155; line-height: 1.6; border-top: 1px solid #cbd5e1; padding-top: 16px;">
+        <strong style="color: #0f172a; display: block; margin-bottom: 12px; font-size: 15px;">YOUR TRAVEL DOCUMENTS</strong>
+        
+        <p style="margin: 6px 0;">
+          <strong>E-Ticket:</strong><br/>
+          Download E-Ticket: <a href="${frontendOrigin}/documents/${eticketToken}?type=eticket" style="color: #1e40af; text-decoration: underline; font-weight: 600;">Download E-Ticket</a><br/>
+          <span style="color: #64748b; font-size: 11px;">${frontendOrigin}/documents/${eticketToken}?type=eticket</span>
+        </p>
+        
+        <p style="margin: 16px 0 0 0;">
+          <strong>Itinerary:</strong><br/>
+          Download Itinerary: <a href="${frontendOrigin}/documents/${itineraryToken}?type=itinerary" style="color: #1e40af; text-decoration: underline; font-weight: 600;">Download Itinerary</a><br/>
+          <span style="color: #64748b; font-size: 11px;">${frontendOrigin}/documents/${itineraryToken}?type=itinerary</span>
+        </p>
       </div>
 
       <p style="color: #64748b; font-size: 12px; line-height: 1.6; margin-top: 24px; text-align: center;">

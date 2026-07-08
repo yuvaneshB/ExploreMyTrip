@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { getBookingDetails, getBookingTicket, getBookingInvoice, cancelBooking, requestRefund } from '../api/bookingApi.js';
+import { getBackendUrl } from '../services/api.js';
 import {
   Calendar, MapPin, Clock, DollarSign, CheckCircle2,
   AlertCircle, XCircle, Loader, Ticket, Receipt,
@@ -90,7 +91,7 @@ const BookingDetailsPage = () => {
   // E-Ticket Share Copy Simulation
   const handleShare = () => {
     if (!ticket) return;
-    const shareText = `ExploreMyTrip Booking details! Ticket Ref: ${ticket.bookingReferenceNumber} for ${ticket.destinationName}. Travel Date: ${new Date(ticket.travelDate).toLocaleDateString()}. Check-in QR: ${ticket.qrCodeUrl.substring(0, 40)}...`;
+    const shareText = `ExploreMyTrip Booking details! Ticket Ref: ${ticket.bookingReferenceNumber} for ${ticket.destinationName}. Travel Date: ${new Date(ticket.travelDate).toLocaleDateString()}.`;
     navigator.clipboard.writeText(shareText);
     toast.success('Share details link copied to clipboard!');
   };
@@ -373,14 +374,22 @@ const BookingDetailsPage = () => {
                   </div>
                 </div>
 
-                {/* QR Code section */}
-                <div className="flex flex-col items-center justify-center py-4 bg-slate-50 border border-slate-100 rounded-2xl gap-3">
-                  {ticket.qrCodeUrl ? (
-                    <img src={ticket.qrCodeUrl} alt="Check-in Ticket QR Code" className="w-40 h-40 object-contain border border-slate-150 p-2 rounded-xl bg-white shadow-inner" />
-                  ) : (
-                    <div className="w-40 h-40 bg-slate-200 animate-pulse rounded-xl" />
-                  )}
-                  <span className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider">Scan to Verify Ticket</span>
+                {/* Download links */}
+                <div className="flex flex-col sm:flex-row gap-4 items-center justify-center py-6 bg-slate-50 border border-slate-100 rounded-2xl">
+                  <a
+                    href={`${getBackendUrl()}/api/v1/bookings/${booking._id}/download-ticket?token=${booking.secureToken}`}
+                    download
+                    className="px-5 py-3 bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors shadow-sm"
+                  >
+                    <FileText className="w-4 h-4" /> Download E-Ticket
+                  </a>
+                  <a
+                    href={`${getBackendUrl()}/api/v1/bookings/${booking._id}/download-itinerary?token=${booking.secureToken}`}
+                    download
+                    className="px-5 py-3 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 font-bold text-xs rounded-xl flex items-center gap-1.5 transition-colors shadow-sm"
+                  >
+                    <FileText className="w-4 h-4" /> Download Itinerary
+                  </a>
                 </div>
 
                 {/* Print instructions info box */}

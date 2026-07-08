@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useForm, useFieldArray } from 'react-hook-form';
-import api from '../services/api.js';
+import api, { getBackendUrl } from '../services/api.js';
 import { CreditCard, Timer, Sparkles, Shield, User, FileText, CheckCircle2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -28,6 +28,12 @@ const BookingCheckoutPage = () => {
   const [gateway, setGateway] = useState('Razorpay');
   const [confirming, setConfirming] = useState(false);
   const [successData, setSuccessData] = useState(null);
+
+  const [cardNumber, setCardNumber] = useState('');
+  const [cardHolder, setCardHolder] = useState('');
+  const [expiryDate, setExpiryDate] = useState('');
+  const [cvv, setCvv] = useState('');
+  const [cardErrors, setCardErrors] = useState({});
 
   const { register, control, handleSubmit, formState: { errors } } = useForm({
     defaultValues: {
@@ -85,6 +91,45 @@ const BookingCheckoutPage = () => {
   const currentTotal = Math.max(0, currentSubtotal - discountAmount);
   const amountToPayNow = paymentType === 'Deposit' ? Math.round(currentTotal * 0.25) : currentTotal;
 
+  const handleCardNumberChange = (e) => {
+    const value = e.target.value.replace(/\D/g, '');
+    const limitedValue = value.substring(0, 16);
+    const formatted = limitedValue.match(/.{1,4}/g)?.join(' ') || '';
+    setCardNumber(formatted);
+    if (cardErrors.cardNumber) {
+      setCardErrors(prev => ({ ...prev, cardNumber: '' }));
+    }
+  };
+
+  const handleCardHolderChange = (e) => {
+    setCardHolder(e.target.value);
+    if (cardErrors.cardHolder) {
+      setCardErrors(prev => ({ ...prev, cardHolder: '' }));
+    }
+  };
+
+  const handleExpiryDateChange = (e) => {
+    let value = e.target.value.replace(/\D/g, '');
+    value = value.substring(0, 4);
+    let formatted = value;
+    if (value.length > 2) {
+      formatted = `${value.substring(0, 2)}/${value.substring(2)}`;
+    }
+    setExpiryDate(formatted);
+    if (cardErrors.expiryDate) {
+      setCardErrors(prev => ({ ...prev, expiryDate: '' }));
+    }
+  };
+
+  const handleCvvChange = (e) => {
+    const value = e.target.value.replace(/\D/g, '');
+    const limitedValue = value.substring(0, 4);
+    setCvv(limitedValue);
+    if (cardErrors.cvv) {
+      setCardErrors(prev => ({ ...prev, cvv: '' }));
+    }
+  };
+
   const handleApplyCoupon = async () => {
     if (!couponCode) return;
     try {
@@ -105,6 +150,46 @@ const BookingCheckoutPage = () => {
   const onCheckoutSubmit = async (formData) => {
     if (sessionExpired) {
       toast.error('Checkout expired. Please create a new booking hold.');
+      return;
+    }
+
+    // Card validations
+    const errors = {};
+    const cleanCardNumber = cardNumber.replace(/\s/g, '');
+    if (cleanCardNumber.length !== 16) {
+      errors.cardNumber = 'Card number must be exactly 16 digits.';
+    }
+    
+    const trimmedCardHolder = cardHolder.trim();
+    if (!trimmedCardHolder) {
+      errors.cardHolder = 'Cardholder name is required.';
+    }
+
+    if (expiryDate.length !== 5) {
+      errors.expiryDate = 'Expiry date must be in MM/YY format.';
+    } else {
+      const [monthStr, yearStr] = expiryDate.split('/');
+      const month = parseInt(monthStr, 10);
+      const year = parseInt(yearStr, 10);
+      if (isNaN(month) || month < 1 || month > 12) {
+        errors.expiryDate = 'Invalid expiration month (01-12).';
+      } else {
+        const today = new Date();
+        const currentYear = today.getFullYear() % 100; // last 2 digits
+        const currentMonth = today.getMonth() + 1;
+        if (year < currentYear || (year === currentYear && month < currentMonth)) {
+          errors.expiryDate = 'This card has expired.';
+        }
+      }
+    }
+
+    if (cvv.length !== 3 && cvv.length !== 4) {
+      errors.cvv = 'CVV must be 3 or 4 digits.';
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setCardErrors(errors);
+      toast.error('Please correct the card payment errors before proceeding.');
       return;
     }
 
@@ -150,8 +235,7 @@ const BookingCheckoutPage = () => {
         </div>
 
         <div className="glass-panel p-8 rounded-3xl border border-slate-200 flex flex-col items-center gap-6 shadow-md">
-          <img src={successData.qrCodeUrl} alt="E-ticket QR Code" className="w-48 h-48 rounded-xl bg-white p-2 border border-slate-250" />
-          <div className="text-xs text-slate-500 text-left w-full space-y-2 border-t border-slate-150 pt-4">
+          <div className="text-xs text-slate-500 text-left w-full space-y-2">
             <p><strong className="text-slate-700">Tour name:</strong> {successData.booking?.tour?.title}</p>
             <p><strong className="text-slate-700">Departure:</strong> {new Date(successData.booking?.departureDate).toLocaleDateString()}</p>
             <p><strong className="text-slate-700">Pricing plan:</strong> {successData.booking?.pricingPlanName}</p>
@@ -160,14 +244,22 @@ const BookingCheckoutPage = () => {
           </div>
         </div>
 
-        <div className="flex gap-4 justify-center">
+        <div className="flex flex-wrap gap-4 justify-center">
           <a
-            href={`https://exploremytrip.onrender.com${successData.invoice?.pdfPath}`}
+            href={`${getBackendUrl()}/api/v1/bookings/${successData.booking?._id}/download-ticket?token=${successData.booking?.secureToken}`}
+            download
+            className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3 rounded-xl text-sm font-semibold transition-all flex items-center gap-2"
+          >
+            <FileText className="w-4 h-4" /> Download E-Ticket
+          </a>
+          <a
+            href={`${getBackendUrl()}/api/v1/bookings/${successData.booking?._id}/download-itinerary?token=${successData.booking?.secureToken}`}
             download
             className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-3 rounded-xl text-sm font-semibold transition-all flex items-center gap-2 border border-slate-200"
           >
-            <FileText className="w-4 h-4" /> Download PDF Invoice
+            <FileText className="w-4 h-4" /> Download Itinerary
           </a>
+
           <button
             onClick={() => navigate('/dashboard/customer')}
             className="bg-gold-500 hover:bg-gold-600 text-white px-6 py-3 rounded-xl text-sm font-semibold transition-all shadow-md shadow-gold-500/10"
@@ -340,9 +432,23 @@ const BookingCheckoutPage = () => {
                 <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-2">Card Number</label>
                 <input
                   type="text"
-                  placeholder="Enter Card Number"
+                  placeholder="1234 5678 9012 3456"
+                  value={cardNumber}
+                  onChange={handleCardNumberChange}
                   className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-gold-500 focus:outline-none text-xs text-slate-850"
                 />
+                {cardErrors.cardNumber && <p className="text-[10px] text-rose-500 mt-1 font-semibold">{cardErrors.cardNumber}</p>}
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-2">Cardholder Name</label>
+                <input
+                  type="text"
+                  placeholder="Cardholder Name"
+                  value={cardHolder}
+                  onChange={handleCardHolderChange}
+                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-gold-500 focus:outline-none text-xs text-slate-850"
+                />
+                {cardErrors.cardHolder && <p className="text-[10px] text-rose-500 mt-1 font-semibold">{cardErrors.cardHolder}</p>}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -350,16 +456,22 @@ const BookingCheckoutPage = () => {
                   <input
                     type="text"
                     placeholder="MM/YY"
+                    value={expiryDate}
+                    onChange={handleExpiryDateChange}
                     className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-gold-500 focus:outline-none text-xs text-slate-850"
                   />
+                  {cardErrors.expiryDate && <p className="text-[10px] text-rose-500 mt-1 font-semibold">{cardErrors.expiryDate}</p>}
                 </div>
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-2">CVC / CVV</label>
                   <input
-                    type="text"
-                    placeholder="123"
+                    type="password"
+                    placeholder="***"
+                    value={cvv}
+                    onChange={handleCvvChange}
                     className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl focus:border-gold-500 focus:outline-none text-xs text-slate-850"
                   />
+                  {cardErrors.cvv && <p className="text-[10px] text-rose-500 mt-1 font-semibold">{cardErrors.cvv}</p>}
                 </div>
               </div>
             </div>

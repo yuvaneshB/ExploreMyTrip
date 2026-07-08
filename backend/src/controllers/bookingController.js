@@ -1,4 +1,5 @@
 import Booking from '../models/booking.js';
+import jwt from 'jsonwebtoken';
 import crypto from 'crypto';
 import fs from 'fs';
 import Tour from '../models/tour.js';
@@ -8,8 +9,7 @@ import Payment from '../models/payment.js';
 import Invoice from '../models/invoice.js';
 import User from '../models/user.js';
 import Refund from '../models/refund.js';
-import { generateInvoicePDF } from '../utilities/pdfGenerator.js';
-import { generateQRCode } from '../utilities/qrGenerator.js';
+import { generateInvoicePDF, generateTicketPDF, generateItineraryPDF } from '../utilities/pdfGenerator.js';
 import { sendEmail, generateBookingEmailHtml } from '../utilities/mailer.js';
 import razorpayInstance from '../config/razorpay.js';
 import path from 'path';
@@ -280,6 +280,12 @@ export const confirmPayment = async (req, res, next) => {
     }
 
     // Update Booking details
+    if (req.body.travelers) {
+      booking.travelers = req.body.travelers;
+    }
+    if (req.body.addons) {
+      booking.addons = req.body.addons;
+    }
     booking.amountPaid += targetAmount;
     booking.status = booking.amountPaid >= booking.totalAmount ? 'Fully Paid' : 'Deposited';
     booking.holdExpiresAt = new Date(Date.now() + 365 * 24 * 60 * 60 * 1000); // clear hold timer
@@ -313,40 +319,40 @@ export const confirmPayment = async (req, res, next) => {
     // Generate PDF invoice physically
     await generateInvoicePDF(invoice, booking, booking.user, booking.tour, invoiceSavePath);
 
-    // Generate QR Code e-ticket data
+    // Ensure secureToken exists
     let secureToken = booking.secureToken;
     if (!secureToken) {
       secureToken = crypto.randomBytes(24).toString('hex');
       booking.secureToken = secureToken;
       await booking.save();
     }
-    const frontendOrigin = getFrontendOrigin(req);
-    const qrCodeUrl = await generateQRCode(`${frontendOrigin}/ticket/${booking._id}?token=${secureToken}`);
-
+    const eticketToken = jwt.sign(
+      { bookingId: booking._id, docType: 'eticket' },
+      process.env.JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+    const itineraryToken = jwt.sign(
+      { bookingId: booking._id, docType: 'itinerary' },
+      process.env.JWT_SECRET,
+      { expiresIn: '30d' }
+    );
 
     // Send email confirmation
     const emailHtml = generateBookingEmailHtml({
       userName: booking.user.name,
       booking,
-      tour: booking.tour
+      tour: booking.tour,
+      frontendOrigin: getFrontendOrigin(req),
+      eticketToken,
+      itineraryToken
     });
-
-    const qrBuffer = Buffer.from(qrCodeUrl.split(',')[1], 'base64');
 
     try {
       const emailResult = await sendEmail({
         to: customer.email,
         subject: `Your ExploreMyTrip Booking is Confirmed - ${booking._id}`,
         html: emailHtml,
-        emailType: 'booking-confirmation',
-        attachments: [
-          {
-            filename: 'ticket-qr.png',
-            content: qrBuffer,
-            cid: 'ticket-qr',
-            contentDisposition: 'inline'
-          }
-        ]
+        emailType: 'booking-confirmation'
       });
 
       if (emailResult && !emailResult.error && (!emailResult.rejected || emailResult.rejected.length === 0)) {
@@ -366,8 +372,7 @@ export const confirmPayment = async (req, res, next) => {
       success: true,
       message: 'Booking payment processed successfully',
       booking,
-      invoice,
-      qrCodeUrl
+      invoice
     });
   } catch (error) {
     // Increment retry count
@@ -597,16 +602,13 @@ export const getBookingTicket = async (req, res, next) => {
       return res.status(403).json({ success: false, message: 'Not authorized to view this ticket' });
     }
     
-    // Generate check-in QR Code dynamically
+    // Ensure secureToken exists
     let secureToken = booking.secureToken;
     if (!secureToken) {
       secureToken = crypto.randomBytes(24).toString('hex');
       booking.secureToken = secureToken;
       await booking.save();
     }
-    const frontendOrigin = getFrontendOrigin(req);
-    const qrCodeUrl = await generateQRCode(`${frontendOrigin}/ticket/${booking._id}?token=${secureToken}`);
-
     
     res.status(200).json({
       success: true,
@@ -623,8 +625,7 @@ export const getBookingTicket = async (req, res, next) => {
         travelerCount: booking.numSeats,
         packageName: booking.pricingPlanName,
         paymentStatus: booking.status === 'Fully Paid' ? 'Paid' : booking.status === 'Deposited' ? 'Deposited' : 'Pending',
-        seatInformation: Array.from({ length: booking.numSeats }, (_, i) => `S-${10 + i}`).join(', '),
-        qrCodeUrl
+        seatInformation: Array.from({ length: booking.numSeats }, (_, i) => `S-${10 + i}`).join(', ')
       }
     });
   } catch (error) {
@@ -654,6 +655,67 @@ export const getBookingInvoice = async (req, res, next) => {
       success: true,
       invoice
     });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// GET /api/v1/bookings/:id/download-ticket
+export const downloadTicket = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { token } = req.query;
+
+    const booking = await Booking.findById(id).populate('tour').populate('user');
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking reference not found' });
+    }
+
+    const isAuthorizedUser = req.user && (booking.user._id.toString() === req.user.id || ['Agent', 'Manager', 'Finance'].includes(req.user.role));
+    const isValidToken = token && booking.secureToken === token;
+
+    if (!isAuthorizedUser && !isValidToken) {
+      return res.status(403).json({ success: false, message: 'Not authorized to download this ticket' });
+    }
+
+    const payment = await Payment.findOne({ booking: booking._id, status: 'Succeeded' }).sort({ createdAt: -1 });
+
+    const ticketSavePath = path.resolve('./public/tickets', `${booking._id}-ticket.pdf`);
+
+    // Generate fresh E-Ticket dynamically
+    await generateTicketPDF(booking, booking.user, booking.tour, payment, ticketSavePath);
+
+    res.download(ticketSavePath, `ETicket-${booking._id.toString().substring(0, 8).toUpperCase()}.pdf`);
+  } catch (error) {
+    next(error);
+  }
+};
+
+// GET /api/v1/bookings/:id/download-itinerary
+export const downloadItinerary = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    const { token } = req.query;
+
+    const booking = await Booking.findById(id).populate('tour').populate('user');
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking reference not found' });
+    }
+
+    const isAuthorizedUser = req.user && (booking.user._id.toString() === req.user.id || ['Agent', 'Manager', 'Finance'].includes(req.user.role));
+    const isValidToken = token && booking.secureToken === token;
+
+    if (!isAuthorizedUser && !isValidToken) {
+      return res.status(403).json({ success: false, message: 'Not authorized to download this itinerary' });
+    }
+
+    const itinerarySavePath = path.resolve('./public/itineraries', `${booking._id}-itinerary.pdf`);
+
+    if (!fs.existsSync(itinerarySavePath)) {
+      await generateItineraryPDF(booking, booking.user, booking.tour, itinerarySavePath);
+    }
+
+    res.download(itinerarySavePath, `Itinerary-${booking._id.toString().substring(0, 8).toUpperCase()}.pdf`);
   } catch (error) {
     next(error);
   }
@@ -858,32 +920,32 @@ export const resendBookingEmail = async (req, res, next) => {
       await generateInvoicePDF(invoice, booking, booking.user, booking.tour, invoiceSavePath);
     }
 
-    // Get QR Code
-    const frontendOrigin = getFrontendOrigin(req);
-    const qrCodeUrl = await generateQRCode(`${frontendOrigin}/ticket/${booking._id}?token=${booking.secureToken}`);
+    const eticketToken = jwt.sign(
+      { bookingId: booking._id, docType: 'eticket' },
+      process.env.JWT_SECRET,
+      { expiresIn: '30d' }
+    );
+    const itineraryToken = jwt.sign(
+      { bookingId: booking._id, docType: 'itinerary' },
+      process.env.JWT_SECRET,
+      { expiresIn: '30d' }
+    );
 
     const emailHtml = generateBookingEmailHtml({
       userName: booking.user.name,
       booking,
-      tour: booking.tour
+      tour: booking.tour,
+      frontendOrigin: getFrontendOrigin(req),
+      eticketToken,
+      itineraryToken
     });
-
-    const qrBuffer = Buffer.from(qrCodeUrl.split(',')[1], 'base64');
 
     try {
       const emailResult = await sendEmail({
         to: customer.email,
         subject: `Resend: Your ExploreMyTrip Booking is Confirmed - ${booking._id}`,
         html: emailHtml,
-        emailType: 'booking-confirmation',
-        attachments: [
-          {
-            filename: 'ticket-qr.png',
-            content: qrBuffer,
-            cid: 'ticket-qr',
-            contentDisposition: 'inline'
-          }
-        ]
+        emailType: 'booking-confirmation'
       });
 
       if (emailResult && !emailResult.error && (!emailResult.rejected || emailResult.rejected.length === 0)) {
@@ -900,6 +962,48 @@ export const resendBookingEmail = async (req, res, next) => {
     }
 
     res.status(200).json({ success: true, message: 'Booking confirmation email resent successfully' });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// GET /api/v1/bookings/documents/download/:secureToken
+export const downloadDocumentByToken = async (req, res, next) => {
+  try {
+    const { secureToken } = req.params;
+
+    // Verify token using JWT
+    let decoded;
+    try {
+      decoded = jwt.verify(secureToken, process.env.JWT_SECRET);
+    } catch (err) {
+      return res.status(401).json({ success: false, message: 'Invalid or expired document link.' });
+    }
+
+    const { bookingId, docType } = decoded;
+
+    const booking = await Booking.findById(bookingId).populate('tour').populate('user');
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking reference not found.' });
+    }
+
+    const payment = await Payment.findOne({ booking: booking._id, status: 'Succeeded' }).sort({ createdAt: -1 });
+
+    if (docType === 'eticket') {
+      const ticketSavePath = path.resolve('./public/tickets', `${booking._id}-ticket.pdf`);
+      await generateTicketPDF(booking, booking.user, booking.tour, payment, ticketSavePath);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="ExploreMyTrip-E-Ticket-${booking._id.toString().substring(0, 8).toUpperCase()}.pdf"`);
+      return res.download(ticketSavePath);
+    } else if (docType === 'itinerary') {
+      const itinerarySavePath = path.resolve('./public/itineraries', `${booking._id}-itinerary.pdf`);
+      await generateItineraryPDF(booking, booking.user, booking.tour, itinerarySavePath);
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="ExploreMyTrip-Itinerary-${booking._id.toString().substring(0, 8).toUpperCase()}.pdf"`);
+      return res.download(itinerarySavePath);
+    } else {
+      return res.status(400).json({ success: false, message: 'Invalid document type requested.' });
+    }
   } catch (error) {
     next(error);
   }

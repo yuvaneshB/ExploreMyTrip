@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext.jsx';
-import api from '../services/api.js';
+import api, { getBackendUrl } from '../services/api.js';
 import Sidebar from '../components/Sidebar.jsx';
 import { 
-  Shield, Award, User, QrCode 
+  Shield, Award, User, FileText 
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -52,39 +52,7 @@ const CustomerDashboard = () => {
   const [selectedBooking, setSelectedBooking] = useState('');
   const [refundReason, setRefundReason] = useState('');
 
-  // QR modal
-  const [selectedQR, setSelectedQR] = useState(null);
-  const [qrCodeUrl, setQrCodeUrl] = useState(null);
-  const [qrLoading, setQrLoading] = useState(false);
-  const [qrError, setQrError] = useState(null);
 
-  useEffect(() => {
-    if (!selectedQR) {
-      setQrCodeUrl(null);
-      setQrError(null);
-      return;
-    }
-
-    const fetchQR = async () => {
-      setQrLoading(true);
-      setQrError(null);
-      try {
-        const res = await api.get(`/bookings/${selectedQR._id}/ticket`);
-        if (res.data && res.data.success) {
-          setQrCodeUrl(res.data.ticket.qrCodeUrl);
-        } else {
-          setQrError('Unable to load QR code. Please try again.');
-        }
-      } catch (err) {
-        console.error('Error fetching ticket QR:', err.message);
-        setQrError('Unable to load QR code. Please try again.');
-      } finally {
-        setQrLoading(false);
-      }
-    };
-
-    fetchQR();
-  }, [selectedQR]);
 
 
   const loadCustomerData = async () => {
@@ -228,12 +196,20 @@ const CustomerDashboard = () => {
                     </div>
 
                     <div className="flex flex-wrap gap-3">
-                      <button 
-                        onClick={() => setSelectedQR(b)}
-                        className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-semibold transition-colors"
+                      <a 
+                        href={`${getBackendUrl()}/api/v1/bookings/${b._id}/download-ticket?token=${b.secureToken}`}
+                        download
+                        className="flex items-center gap-1.5 bg-slate-900 hover:bg-slate-800 text-white px-4 py-2.5 rounded-xl text-xs font-semibold transition-colors"
                       >
-                        <QrCode className="w-4 h-4 text-gold-500" /> View E-Ticket
-                      </button>
+                        <FileText className="w-4 h-4" /> Download E-Ticket
+                      </a>
+                      <a 
+                        href={`${getBackendUrl()}/api/v1/bookings/${b._id}/download-itinerary?token=${b.secureToken}`}
+                        download
+                        className="flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-2.5 rounded-xl text-xs font-semibold transition-colors border border-slate-200"
+                      >
+                        <FileText className="w-4 h-4 text-slate-500" /> Download Itinerary
+                      </a>
                       
                       {b.status !== 'Cancelled' && b.status !== 'Refunded' && (
                         <button 
@@ -510,41 +486,7 @@ const CustomerDashboard = () => {
         )}
       </div>
 
-      {/* QR Ticket Modal */}
-      {selectedQR && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm p-4">
-          <div className="glass-panel p-8 rounded-3xl max-w-sm w-full text-center border border-slate-200 flex flex-col items-center gap-6 shadow-2xl">
-            <h3 className="font-bold text-slate-800 text-lg">E-Ticket QR Code</h3>
-            {/* Direct loading of QR from canvas simulation */}
-            <div className="bg-white p-3 rounded-2xl border border-slate-200 shadow-inner">
-              <div className="text-xs text-slate-850 font-bold border-4 border-dashed border-slate-300 flex items-center justify-center w-40 h-40 overflow-hidden relative">
-                {qrLoading ? (
-                  <div className="flex items-center justify-center">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gold-500"></div>
-                  </div>
-                ) : qrError ? (
-                  <span className="text-[10px] text-rose-500 font-bold px-2 text-center">{qrError}</span>
-                ) : qrCodeUrl ? (
-                  <img 
-                    src={qrCodeUrl} 
-                    alt="E-ticket QR Code" 
-                    className="w-full h-full object-contain p-1" 
-                  />
-                ) : (
-                  <span>[ QR PASS ]</span>
-                )}
-              </div>
-            </div>
-            <p className="text-[10px] text-slate-500">Scan this code at departure gates for instant check-in verification.</p>
-            <button 
-              onClick={() => setSelectedQR(null)}
-              className="bg-slate-100 text-slate-700 hover:bg-slate-200 px-6 py-2 rounded-xl text-xs font-semibold transition-colors border border-slate-200"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-      )}
+
     </div>
   );
 };
